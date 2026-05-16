@@ -5,7 +5,7 @@
 
 services:
   listmonk:
-    image: listmonk/listmonk:v4.1.0
+    image: listmonk/listmonk:v6.1.0
     container_name: listmonk-app
     restart: unless-stopped
     environment:
