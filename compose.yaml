@@ -1,0 +1,79 @@
+# Listmonk + Postgres — Newsletter & Transactional E-Mail Stack
+# Domain: mailings.fever-context.de (Wildcard *.fever-context.de via Traefik in Coolify)
+# Coolify-Magic-Vars: SERVICE_FQDN_LISTMONK_9000, SERVICE_PASSWORD_POSTGRES, SERVICE_PASSWORD_LISTMONKADMIN
+# Repo-Pfad: infrastruktur/listmonk-stack/
+
+services:
+  listmonk:
+    image: listmonk/listmonk:v4.1.0
+    container_name: listmonk-app
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Berlin
+      # App
+      - LISTMONK_app__address=0.0.0.0:9000
+      - LISTMONK_app__admin_username=admin
+      - LISTMONK_app__admin_password=${SERVICE_PASSWORD_LISTMONKADMIN}
+      # DB
+      - LISTMONK_db__host=listmonk-db
+      - LISTMONK_db__port=5432
+      - LISTMONK_db__user=listmonk
+      - LISTMONK_db__password=${SERVICE_PASSWORD_POSTGRES}
+      - LISTMONK_db__database=listmonk
+      - LISTMONK_db__ssl_mode=disable
+      - LISTMONK_db__max_open=25
+      - LISTMONK_db__max_idle=25
+      - LISTMONK_db__max_lifetime=300s
+    depends_on:
+      listmonk-db:
+        condition: service_healthy
+    # Idempotenter Start: install bei leerer DB, sonst upgrade, dann run
+    command:
+      [
+        "sh",
+        "-c",
+        "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && ./listmonk --config ''"
+      ]
+    ports:
+      - "9000"
+    expose:
+      - "9000"
+    volumes:
+      - listmonk-uploads:/listmonk/uploads
+    labels:
+      # Coolify wird die FQDN-Mapping uebernehmen; hier nur ein Fallback fuer Doku
+      - coolify.managed=true
+      - coolify.service=listmonk
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  listmonk-db:
+    image: postgres:17-alpine
+    container_name: listmonk-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=listmonk
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=listmonk
+      - TZ=Europe/Berlin
+    volumes:
+      - listmonk-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U listmonk -d listmonk"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    labels:
+      - coolify.managed=true
+      - coolify.service=listmonk-db
+
+volumes:
+  listmonk-uploads:
+    name: listmonk-uploads
+  listmonk-pgdata:
+    name: listmonk-pgdata
